@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  typecheck-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Typecheck all packages
+        run: pnpm -r typecheck
+
+      - name: Test all packages
+        run: pnpm -r test
+
+  validate-database-schema:
+    runs-on: ubuntu-latest
+    # This job's whole purpose: the sandbox this repo was originally built
+    # in can't reach Prisma's engine-binary CDN, so schema validation and
+    # migration generation have to happen here in CI, against a real
+    # Postgres instance, instead. See docs/ADR.md section 4 / 11.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: ai_sales_agent_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/ai_sales_agent_ci?schema=public"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Validate Prisma schema
+        run: pnpm --filter @ai-sales-agent/database exec prisma validate
+
+      - name: Generate Prisma client
+        run: pnpm --filter @ai-sales-agent/database exec prisma generate
+
+      - name: Create and apply initial migration against real Postgres
+        run: pnpm --filter @ai-sales-agent/database exec prisma migrate dev --name init --skip-seed
+
+      - name: Verify migration is idempotent (deploy applies cleanly)
+        run: pnpm --filter @ai-sales-agent/database exec prisma migrate deploy
+
+      - name: Upload generated migration files
+        uses: actions/upload-artifact@v4
+        with:
+          name: prisma-migrations
+          path: packages/database/prisma/migrations
+          if-no-files-found: error

@@ -1,0 +1,585 @@
+// AI Job Finder / AI Sales Agent — Database Schema
+//
+// Design notes:
+// - JSON columns are used for genuinely variable-shape data (author
+//   metadata from different platforms, AI-extracted requirements, etc.)
+//   rather than modeling every possible field as a column.
+// - Every table that feeds the policy/compliance engine or the
+//   scoring engines carries enough fields to answer "why did the system
+//   do this" after the fact — this is a lead-gen system that makes
+//   automated decisions, so auditability is a first-class concern, not
+//   an afterthought.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------
+// Users & auth
+// ---------------------------------------------------------------------
+
+enum UserRole {
+  ADMIN
+  OPERATOR
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  role         UserRole @default(ADMIN)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  notifications Notification[]
+
+  @@map("users")
+}
+
+// ---------------------------------------------------------------------
+// Platforms & the compliance/policy engine
+// ---------------------------------------------------------------------
+
+model Platform {
+  id   String @id @default(cuid())
+  /// Machine-readable key, e.g. "upwork", "remoteok", "own_website"
+  key  String @unique
+  name String
+
+  /// --- Policy engine flags. These are read by packages/policy-engine
+  /// before ANY connector action. A false flag here is a hard stop,
+  /// not a suggestion — no connector code is permitted to override it.
+  automationAllowed  Boolean @default(false)
+  discoveryAllowed   Boolean @default(false)
+  autoMessageAllowed Boolean @default(false)
+  autoCommentAllowed Boolean @default(false)
+  apiAvailable       Boolean @default(false)
+
+  /// Human-readable justification for the flags above — required
+  /// reading before anyone flips one of them to true.
+  complianceNotes String?
+
+  isEnabled Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  connectors        SourceConnector[]
+  opportunities     Opportunity[]
+  conversations     Conversation[]
+  automationRules   AutomationRule[]
+
+  @@map("platforms")
+}
+
+enum ConnectorType {
+  API
+  RSS
+  WEBHOOK
+  MANUAL
+}
+
+model SourceConnector {
+  id         String        @id @default(cuid())
+  platformId String
+  platform   Platform      @relation(fields: [platformId], references: [id], onDelete: Cascade)
+
+  name      String
+  type      ConnectorType
+  /// Connector-specific config (endpoint URLs, feed URLs, query params).
+  /// Never store secrets here — secrets are env vars referenced by name.
+  config    Json
+  isEnabled Boolean       @default(false)
+  lastRunAt DateTime?
+  lastError String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  opportunities Opportunity[]
+
+  @@index([platformId])
+  @@map("source_connectors")
+}
+
+// ---------------------------------------------------------------------
+// Opportunities
+// ---------------------------------------------------------------------
+
+enum AutomationPermission {
+  ALLOWED
+  DISCOVERY_ONLY
+  DISABLED
+}
+
+enum OpportunityStatus {
+  DISCOVERED
+  ANALYZED
+  DUPLICATE
+  IGNORED_LOW_RELEVANCE
+  IGNORED_POLICY
+  CONVERTED_TO_LEAD
+  ARCHIVED
+}
+
+model Opportunity {
+  id String @id @default(cuid())
+
+  sourcePlatformId  String
+  sourcePlatform    Platform         @relation(fields: [sourcePlatformId], references: [id])
+  sourceConnectorId String?
+  sourceConnector   SourceConnector? @relation(fields: [sourceConnectorId], references: [id])
+
+  sourceUrl  String?
+  /// The platform's own ID for this listing — used for duplicate detection
+  /// together with sourcePlatformId.
+  externalId String
+
+  title       String
+  description String  @db.Text
+  country     String?
+  language    String?
+
+  authorName     String?
+  /// Free-form: platform-specific author fields that don't warrant their
+  /// own columns (rating, review count, verification status, etc.)
+  authorMetadata Json?
+
+  budgetMin   Decimal? @db.Decimal(12, 2)
+  budgetMax   Decimal? @db.Decimal(12, 2)
+  currency    String?
+  projectType String?
+
+  /// AI-detected skills/keywords, e.g. ["shopify", "ecommerce", "api"]
+  skillsDetected Json?
+
+  /// Snapshot of the policy decision made AT DISCOVERY TIME, so historical
+  /// opportunities remain auditable even if a platform's policy changes
+  /// later.
+  automationPermission AutomationPermission @default(DISABLED)
+
+  relevanceScore Int? // 0-100, set by the AI relevance engine
+  riskScore      Int? // 0-100, set by the risk/trust engine
+
+  status OpportunityStatus @default(DISCOVERED)
+
+  /// Self-relation for duplicate detection — points at the canonical
+  /// opportunity this one duplicates, if any.
+  duplicateOfId String?
+  duplicateOf   Opportunity?  @relation("Duplicates", fields: [duplicateOfId], references: [id])
+  duplicates    Opportunity[] @relation("Duplicates")
+
+  sourceCreatedAt DateTime? // when the listing was created on the source platform
+  discoveredAt    DateTime  @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lead Lead?
+
+  @@unique([sourcePlatformId, externalId])
+  @@index([status])
+  @@index([relevanceScore])
+  @@index([discoveredAt])
+  @@map("opportunities")
+}
+
+// ---------------------------------------------------------------------
+// Clients & Leads
+// ---------------------------------------------------------------------
+
+model Client {
+  id       String  @id @default(cuid())
+  name     String?
+  email    String?
+  phone    String?
+  country  String?
+  /// Username/handle on the source platform, if known.
+  platformUsername String?
+  metadata Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  leads Lead[]
+
+  @@map("clients")
+}
+
+enum ConversationStage {
+  DISCOVERED
+  ANALYZED
+  QUALIFIED_FOR_OUTREACH
+  OUTREACH_SENT
+  CLIENT_RESPONDED
+  REQUIREMENTS_GATHERING
+  SOLUTION_DISCUSSION
+  PORTFOLIO_SHARED
+  BUDGET_DISCUSSION
+  TIMELINE_DISCUSSION
+  QUALIFIED
+  HOT_LEAD
+  HUMAN_HANDOFF
+  CONVERTED
+  LOST
+  ARCHIVED
+}
+
+model Lead {
+  id String @id @default(cuid())
+
+  opportunityId String      @unique
+  opportunity   Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+
+  clientId String?
+  client   Client? @relation(fields: [clientId], references: [id])
+
+  stage ConversationStage @default(DISCOVERED)
+
+  /// Cached current scores — full history lives in LeadScore / RiskAssessment.
+  leadScore Int @default(0)
+  riskScore Int @default(0)
+
+  projectSummary String? @db.Text
+  /// AI-extracted structured requirements (features, pages, integrations…)
+  requirements   Json?
+  budget         String?
+  timeline       String?
+
+  assignedServiceId String?
+  assignedService   Service? @relation(fields: [assignedServiceId], references: [id])
+
+  handoffAt      DateTime?
+  handoffReason  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  conversations   Conversation[]
+  leadScores      LeadScore[]
+  riskAssessments RiskAssessment[]
+
+  @@index([stage])
+  @@index([leadScore])
+  @@map("leads")
+}
+
+// ---------------------------------------------------------------------
+// Conversations & messages
+// ---------------------------------------------------------------------
+
+enum ConversationStatus {
+  ACTIVE
+  PAUSED
+  HUMAN_TAKEOVER
+  CLOSED
+}
+
+model Conversation {
+  id String @id @default(cuid())
+
+  leadId String
+  lead   Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  platformId String
+  platform   Platform @relation(fields: [platformId], references: [id])
+
+  status        ConversationStatus @default(ACTIVE)
+  startedAt     DateTime           @default(now())
+  lastMessageAt DateTime?
+  /// AI-maintained rolling summary, refreshed as the conversation grows,
+  /// so the AI never has to re-read the entire history on every turn.
+  summary       String?            @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  messages Message[]
+  memory   ConversationMemory?
+
+  @@index([leadId])
+  @@index([status])
+  @@map("conversations")
+}
+
+enum MessageSender {
+  CLIENT
+  AI
+  HUMAN
+  SYSTEM
+}
+
+model Message {
+  id String @id @default(cuid())
+
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  sender   MessageSender
+  content  String        @db.Text
+  /// Provider used, token counts, confidence, etc — for the AI sender;
+  /// left empty for CLIENT/HUMAN messages.
+  metadata Json?
+
+  sentAt    DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  @@index([conversationId])
+  @@map("messages")
+}
+
+model ConversationMemory {
+  id String @id @default(cuid())
+
+  conversationId String       @unique
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  clientName          String?
+  business             String?
+  requirements          Json?
+  featuresDiscussed      Json?
+  budgetDiscussed        String?
+  timelineDiscussed      String?
+  /// Tracks which questions have already been asked/answered, so the AI
+  /// never repeats itself — a named requirement from the brief.
+  questionsAnswered      Json?
+  recommendedSolution    String?
+  /// IDs of PortfolioItem records already shared in this conversation.
+  portfolioSharedIds     Json?
+
+  updatedAt DateTime @updatedAt
+
+  @@map("conversation_memory")
+}
+
+// ---------------------------------------------------------------------
+// Portfolio, services, knowledge base, pricing
+// ---------------------------------------------------------------------
+
+model PortfolioItem {
+  id String @id @default(cuid())
+
+  title           String
+  description     String  @db.Text
+  technologies    Json // string[]
+  serviceCategory String?
+  industry        String?
+  projectUrl      String?
+  imageUrl        String?
+  caseStudy       String? @db.Text
+  tags            Json? // string[]
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([serviceCategory])
+  @@map("portfolio_items")
+}
+
+model Service {
+  id          String  @id @default(cuid())
+  name        String
+  slug        String  @unique
+  description String? @db.Text
+  category    String?
+  isActive    Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  leads        Lead[]
+  pricingRules PricingRule[]
+
+  @@map("services")
+}
+
+enum KnowledgeBaseCategory {
+  SERVICE
+  FAQ
+  POLICY
+  PRICING
+  PROCESS
+  COMMUNICATION
+}
+
+model KnowledgeBase {
+  id       String                @id @default(cuid())
+  category KnowledgeBaseCategory
+  title    String
+  content  String                @db.Text
+  tags     Json? // string[], used for retrieval matching
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([category])
+  @@map("knowledge_base")
+}
+
+model PricingRule {
+  id String @id @default(cuid())
+
+  serviceId String?
+  service   Service? @relation(fields: [serviceId], references: [id])
+
+  name      String
+  minBudget Decimal? @db.Decimal(12, 2)
+  maxBudget Decimal? @db.Decimal(12, 2)
+  currency  String   @default("USD")
+  notes     String?  @db.Text
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("pricing_rules")
+}
+
+// ---------------------------------------------------------------------
+// Automation rules (rate limits, cooldowns, working hours…)
+// ---------------------------------------------------------------------
+
+enum AutomationRuleType {
+  RATE_LIMIT
+  DAILY_LIMIT
+  COOLDOWN
+  WORKING_HOURS
+  DUPLICATE_CONTACT_BLOCK
+}
+
+model AutomationRule {
+  id String @id @default(cuid())
+
+  name String
+  type AutomationRuleType
+
+  /// Null = applies globally across all platforms.
+  platformId String?
+  platform   Platform? @relation(fields: [platformId], references: [id])
+
+  /// e.g. { "maxPerDay": 20 } or { "cooldownHours": 48 } or
+  /// { "start": "09:00", "end": "21:00", "timezone": "Asia/Karachi" }
+  config Json
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("automation_rules")
+}
+
+// ---------------------------------------------------------------------
+// AI provider configuration (abstraction layer — Round 2+)
+// ---------------------------------------------------------------------
+
+model AiProvider {
+  id          String  @id @default(cuid())
+  /// e.g. "anthropic", "openai" — matches an adapter key in packages/ai-core
+  key         String  @unique
+  displayName String
+  /// Model name, temperature, etc. NEVER an API key — keys are env vars.
+  config      Json
+  isEnabled   Boolean @default(false)
+  isDefault   Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("ai_providers")
+}
+
+// ---------------------------------------------------------------------
+// Scoring history (point-in-time records; Lead.leadScore/riskScore are
+// the cached "current" values for fast reads)
+// ---------------------------------------------------------------------
+
+model LeadScore {
+  id String @id @default(cuid())
+
+  leadId String
+  lead   Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  score   Int
+  reason  String? @db.Text
+  /// Structured signals that produced this score, e.g.
+  /// { "hasDetailedRequirements": true, "askedForPrice": true, ... }
+  signals Json?
+
+  scoredAt  DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  @@index([leadId])
+  @@map("lead_scores")
+}
+
+model RiskAssessment {
+  id String @id @default(cuid())
+
+  leadId String
+  lead   Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  score   Int
+  signals Json?
+  notes   String? @db.Text
+
+  assessedAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  @@index([leadId])
+  @@map("risk_assessments")
+}
+
+// ---------------------------------------------------------------------
+// Logging & notifications
+// ---------------------------------------------------------------------
+
+enum ActivityActor {
+  SYSTEM
+  AI
+  HUMAN
+}
+
+model ActivityLog {
+  id String @id @default(cuid())
+
+  actor      ActivityActor
+  action     String
+  entityType String
+  entityId   String?
+  details    Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("activity_logs")
+}
+
+model Notification {
+  id String @id @default(cuid())
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
+
+  type    String
+  title   String
+  body    String  @db.Text
+  isRead  Boolean @default(false)
+
+  relatedEntityType String?
+  relatedEntityId   String?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, isRead])
+  @@map("notifications")
+}

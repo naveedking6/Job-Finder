@@ -1,0 +1,22 @@
+{
+  "name": "ai-sales-agent",
+  "private": true,
+  "version": "0.1.0",
+  "description": "AI-powered job finder, lead qualification, and sales agent system",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "packageManager": "pnpm@9.0.0",
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "dev:api": "pnpm --filter @ai-sales-agent/api dev",
+    "db:generate": "pnpm --filter @ai-sales-agent/database generate",
+    "db:migrate": "pnpm --filter @ai-sales-agent/database migrate"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4"
+  }
+}

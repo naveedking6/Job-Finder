@@ -1,0 +1,24 @@
+{
+  "name": "@ai-sales-agent/database",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "generate": "prisma generate",
+    "migrate": "prisma migrate deploy",
+    "migrate:dev": "prisma migrate dev",
+    "studio": "prisma studio",
+    "typecheck": "tsc --noEmit",
+    "test": "echo \"no tests in database package yet\" && exit 0"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.19.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "prisma": "^5.19.1",
+    "typescript": "^5.5.4"
+  }
+}
