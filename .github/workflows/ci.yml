@@ -35,6 +35,13 @@ jobs:
     # in can't reach Prisma's engine-binary CDN, so schema validation and
     # migration generation have to happen here in CI, against a real
     # Postgres instance, instead. See docs/ADR.md section 4 / 11.
+    #
+    # If this job generates NEW migration files (i.e. prisma/migrations
+    # didn't already contain them), it commits them back to the repo —
+    # migrations are meant to be version-controlled, not left as an
+    # ephemeral CI artifact.
+    permissions:
+      contents: write
     services:
       postgres:
         image: postgres:16
@@ -75,6 +82,18 @@ jobs:
 
       - name: Verify migration is idempotent (deploy applies cleanly)
         run: pnpm --filter @ai-sales-agent/database exec prisma migrate deploy
+
+      - name: Commit generated migration files if new
+        run: |
+          if [ -n "$(git status --porcelain packages/database/prisma/migrations)" ]; then
+            git config user.name "ci-migration-bot"
+            git config user.email "ci-migration-bot@users.noreply.github.com"
+            git add packages/database/prisma/migrations
+            git commit -m "ci: commit generated Prisma migration [skip ci]"
+            git push origin HEAD:main
+          else
+            echo "No new migration files to commit."
+          fi
 
       - name: Upload generated migration files
         uses: actions/upload-artifact@v4
