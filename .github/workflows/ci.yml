@@ -85,8 +85,17 @@ jobs:
       - name: Create and apply initial migration against real Postgres
         run: pnpm --filter @ai-sales-agent/database exec prisma migrate dev --name init --skip-seed
 
+      - name: Seed the database
+        run: pnpm --filter @ai-sales-agent/database run seed
+
       - name: Verify migration is idempotent (deploy applies cleanly)
         run: pnpm --filter @ai-sales-agent/database exec prisma migrate deploy
+
+      - name: Run API integration tests against real Postgres
+        env:
+          JWT_SECRET: "ci-integration-test-secret-not-used-in-production"
+          JWT_EXPIRES_IN: "1h"
+        run: pnpm --filter @ai-sales-agent/api test:integration
 
       - name: Commit generated migration files if new
         run: |

@@ -20,6 +20,23 @@ datasource db {
 }
 
 // ---------------------------------------------------------------------
+// Global settings — key/value store for things the brief calls out as
+// configurable: the automation emergency-stop flag, score thresholds,
+// WhatsApp number, working hours, etc. Deliberately generic (not one
+// column per setting) so new settings don't require a migration every
+// time — see packages/shared/src/settings.ts for the known keys and
+// their expected value shapes.
+// ---------------------------------------------------------------------
+
+model Setting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+
+  @@map("settings")
+}
+
+// ---------------------------------------------------------------------
 // Users & auth
 // ---------------------------------------------------------------------
 

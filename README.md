@@ -85,7 +85,11 @@ piece of the same production system:
 - [x] **Round 1** — Architecture Decision Record, repo scaffold, full
       database schema, environment configuration, CI (typecheck + test +
       schema validation), initial tests.
-- [ ] **Round 2** — Backend core API, authentication, settings.
+- [x] **Round 2** — Backend core API (opportunities, leads, conversations,
+      portfolio, services, platforms, settings, automation control,
+      analytics), JWT authentication, settings key/value store, seed
+      script (operator's real service profile + compliant platform
+      defaults), real integration test suite against Postgres in CI.
 - [ ] **Round 3** — Platform policy/compliance engine.
 - [ ] **Round 4** — Connector framework, opportunity normalization,
       duplicate detection.

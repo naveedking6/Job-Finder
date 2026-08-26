@@ -9,14 +9,21 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:integration": "vitest run --config vitest.integration.config.ts"
   },
   "dependencies": {
     "@ai-sales-agent/database": "workspace:*",
     "@ai-sales-agent/shared": "workspace:*",
-    "fastify": "^4.28.1"
+    "bcryptjs": "^2.4.3",
+    "fastify": "^4.28.1",
+    "fastify-plugin": "^4.5.1",
+    "jsonwebtoken": "^9.0.2",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/jsonwebtoken": "^9.0.6",
     "@types/node": "^20.14.0",
     "tsx": "^4.16.2",
     "typescript": "^5.5.4",

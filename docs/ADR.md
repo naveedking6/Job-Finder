@@ -213,3 +213,43 @@ Documented explicitly so nothing here is mistaken for an oversight:
   deploy requires the operator to click through those services' own
   sign-up flows (cannot be done from this sandbox). Documented as a
   manual step in `docs/DEPLOYMENT.md` when that doc is written.
+
+---
+
+## 12. Round 2 addendum — API-level testing under the same sandbox constraint
+
+Round 2 introduced routes that touch the real Prisma client (`app.prisma`
+is wired up via a Fastify plugin). This means `buildApp()` itself now
+requires a generated Prisma client to even construct — so, consistent
+with section 11's Prisma-binary limitation, **any test that calls
+`buildApp()` can only run where the client has been generated**, i.e. in
+CI, not in the dev sandbox this repo was originally built in.
+
+**Decision:** split the API's test suite in two:
+- `pnpm test` — pure-logic unit tests only (`src/lib/*.test.ts`, and any
+  future route logic factored out as testable-without-a-DB functions).
+  These run everywhere, including the original dev sandbox.
+- `pnpm test:integration` — real end-to-end tests (`src/integration/*.integration.test.ts`)
+  that call `buildApp()` and exercise actual routes against a real
+  Postgres instance. These only run in CI's `validate-database-schema`
+  job, immediately after that job migrates and seeds a fresh Postgres
+  service container — so they're testing the exact same schema/migration
+  state that was just validated, not a stale assumption about it.
+
+This is a stronger verification story than mocking Prisma would have
+been — the integration suite genuinely exercises auth, portfolio CRUD,
+settings validation, and the automation start/stop emergency-stop
+mechanism against a real database, not a test double standing in for one.
+
+## 13. Round 2 addendum — no public signup
+
+The seed script creates the admin user record but deliberately does NOT
+set a usable password (it's seeded with a random, discarded hash). This
+avoids a known default credential ever existing in version control. The
+real password must be set via a one-time authenticated action once
+Supabase/Render are actually provisioned — documented as a manual step
+in `docs/DEPLOYMENT.md` when that's written (Round 10). There is no
+public `/auth/register` endpoint — this is a single-operator internal
+system, not a multi-tenant product, consistent with the brief's emphasis
+on simplicity and this ADR's security section.
+
