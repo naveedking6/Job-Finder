@@ -1,6 +1,17 @@
+import { Prisma } from "@ai-sales-agent/database";
 import { platformUpdateSchema } from "@ai-sales-agent/shared";
 import type { FastifyInstance } from "fastify";
 import { NotFoundError } from "../plugins/error-handler.js";
+
+/**
+ * Prisma's Json fields require plain JSON-serializable values —
+ * Date objects, Decimal, etc. from a fetched row aren't directly
+ * assignable. Round-tripping through JSON.stringify/parse converts
+ * Dates to ISO strings the same way the database will store them.
+ */
+function toJsonSafe(value: unknown): Prisma.InputJsonValue {
+  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
+}
 
 export default async function platformRoutes(app: FastifyInstance): Promise<void> {
   app.get("/platforms", { preHandler: [app.authenticate] }, async () => {
@@ -29,7 +40,7 @@ export default async function platformRoutes(app: FastifyInstance): Promise<void
             action: "platform.policy_updated",
             entityType: "Platform",
             entityId: request.params.id,
-            details: { changes: body, previousState: existing },
+            details: { changes: toJsonSafe(body), previousState: toJsonSafe(existing) },
           },
         }),
       ]);
