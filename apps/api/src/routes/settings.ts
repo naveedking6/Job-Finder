@@ -2,6 +2,7 @@ import { DEFAULT_SETTINGS, isKnownSettingKey, SETTING_KEYS, validateSettingValue
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Setting } from "@ai-sales-agent/database";
+import { toJsonSafe } from "../lib/json-safe.js";
 
 const settingsUpdateSchema = z.record(z.string(), z.unknown());
 
@@ -58,7 +59,7 @@ export default async function settingsRoutes(app: FastifyInstance): Promise<void
           actor: "HUMAN",
           action: "settings.updated",
           entityType: "Setting",
-          details: { changes: validated },
+          details: { changes: toJsonSafe(validated) },
         },
       }),
     ]);
