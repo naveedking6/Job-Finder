@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@ai-sales-agent/database": "workspace:*",
+    "@ai-sales-agent/policy-engine": "workspace:*",
     "@ai-sales-agent/shared": "workspace:*",
     "bcryptjs": "^2.4.3",
     "fastify": "^4.28.1",

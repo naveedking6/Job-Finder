@@ -253,3 +253,41 @@ public `/auth/register` endpoint — this is a single-operator internal
 system, not a multi-tenant product, consistent with the brief's emphasis
 on simplicity and this ADR's security section.
 
+## 14. Round 3 — the policy engine as a genuinely separate, pure package
+
+The brief calls for the policy/compliance engine to be "a core
+architectural layer, not an afterthought." Concretely, that shaped a
+specific implementation choice: `packages/policy-engine` has **zero
+database dependency**. It takes plain-object inputs (a platform's policy
+flags, a rule's config, already-known counts/timestamps) and returns a
+decision — it never queries anything itself.
+
+Why this matters beyond code cleanliness: it means the actual policy
+*logic* — every combination of platform flags, the emergency-stop
+interaction, rate limits, cooldowns, and working-hours math (including
+timezone conversion and overnight-window wraparound) — is fully unit
+tested and verified in this sandbox, the same one that can't reach
+Prisma's binary CDN. 46 tests, all passing, covering the exact rules a
+future connector will be bound by. The database-touching part (fetching
+a real Platform row, real AutomationRule rows, real ActivityLog counts)
+is a thin route handler (`GET /platforms/:id/policy-check`) that maps
+live data onto the pure function's input shape — that mapping is what
+gets tested in CI's integration suite, not the decision logic itself,
+which was already proven correct independently.
+
+**Note on `WORKING_HOURS` evaluation:** uses `luxon` for timezone
+conversion rather than hand-rolled UTC-offset arithmetic — DST and
+half-hour-offset timezones make manual date math a genuine correctness
+risk, and this is exactly the kind of logic that should fail loudly on a
+bad config (invalid timezone → denies/fails closed) rather than silently
+misbehave.
+
+**Note on rule "windows":** the current `GET /platforms/:id/policy-check`
+route computes `actionsInWindow` as "count since start of today" for
+*all* rate/daily-style rules on a platform, rather than giving each rule
+its own distinct window. This is a deliberate, documented simplification
+— there is no real outreach traffic yet (connectors don't exist until
+Round 4), so per-rule window precision would be precision without a
+purpose right now. Flagged here as a known refinement for when Round 4
+actually generates traffic this matters for.
+

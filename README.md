@@ -90,7 +90,15 @@ piece of the same production system:
       analytics), JWT authentication, settings key/value store, seed
       script (operator's real service profile + compliant platform
       defaults), real integration test suite against Postgres in CI.
-- [ ] **Round 3** — Platform policy/compliance engine.
+- [x] **Round 3** — Platform policy/compliance engine (`packages/policy-engine`):
+      pure, database-free decision logic for the four action types
+      (discover/automate/auto-message/auto-comment), plus automation
+      rule evaluators (rate limits, daily limits, cooldowns, working
+      hours with real timezone handling, duplicate-contact blocking).
+      46 tests covering edge cases (boundary conditions, overnight
+      windows, invalid timezones, emergency-stop interaction). Wired
+      into a real `GET /platforms/:id/policy-check` endpoint against
+      live data.
 - [ ] **Round 4** — Connector framework, opportunity normalization,
       duplicate detection.
 - [ ] **Round 5** — AI provider abstraction, relevance analysis.
