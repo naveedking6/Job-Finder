@@ -13,6 +13,7 @@
     "test:integration": "vitest run --config vitest.integration.config.ts"
   },
   "dependencies": {
+    "@ai-sales-agent/connectors": "workspace:*",
     "@ai-sales-agent/database": "workspace:*",
     "@ai-sales-agent/policy-engine": "workspace:*",
     "@ai-sales-agent/shared": "workspace:*",

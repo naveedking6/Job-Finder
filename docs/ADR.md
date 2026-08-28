@@ -291,3 +291,53 @@ Round 4), so per-rule window precision would be precision without a
 purpose right now. Flagged here as a known refinement for when Round 4
 actually generates traffic this matters for.
 
+## 15. Round 4 — connector framework, normalization, duplicate detection
+
+Same pattern as the policy engine: `packages/connectors` keeps the parts
+worth testing thoroughly (`normalize()` for each source, duplicate
+detection, pipeline orchestration) database-free and pure, while the one
+genuinely untestable-in-CI part (`fetch()` — real network calls to
+third-party APIs) stays thin and isolated.
+
+**Real connectors implemented:** RemoteOK (public JSON feed) and We Work
+Remotely (public RSS feed) — both seeded `discoveryAllowed=true` per the
+ADR's compliance stance (section 8), since both platforms publish these
+feeds specifically for programmatic consumption. Each connector's
+`normalize()` is tested against a fixture modeled on the platform's real,
+documented response format — including edge cases each format actually
+has in practice (RemoteOK's leading legal-notice object that isn't a
+real job; We Work Remotely's "Company: Title" convention breaking for
+titles that don't follow it, and its RSS parser collapsing a single-item
+feed into a bare object rather than a one-element array, a genuine
+common XML-parsing footgun that's explicitly tested against).
+
+**The own-website contact form is deliberately NOT a `Connector`.** The
+interface's `fetch()`/`normalize()` split assumes a poll-based source;
+the contact form is push-based (a visitor submits it once, there's
+nothing to poll). Forcing it into the same interface would mean a
+`fetch()` that does nothing, which is worse than just not implementing
+an interface that doesn't fit. It's a plain normalize function called
+directly by `POST /intake/contact-form`.
+
+**Duplicate detection has two distinct layers**, matching two distinct
+real-world cases:
+- **Exact** (same platform, same external id) — enforced at the database
+  level by the existing unique constraint (Round 1), and checked
+  proactively by the pipeline before insertion so routine "already
+  ingested" cases don't generate noisy constraint-violation errors.
+- **Fuzzy, cross-platform** (the same job posted on RemoteOK AND We Work
+  Remotely, with different ids) — a Jaccard word-set similarity on
+  titles. This does NOT exclude anything automatically; it flags a
+  match with a similarity score for a human (or the AI relevance engine,
+  Round 5) to weigh in on, since "similar title" isn't proof of being
+  the literal same listing and silently dropping data on a fuzzy
+  heuristic alone would be the wrong default.
+
+**What Round 4 does NOT test, and why:** the "successfully fetched real
+data" path of `POST /connectors/:platformKey/run` calls real third-party
+APIs. Testing that reliably in CI would mean depending on RemoteOK's/We
+Work Remotely's uptime and exact current response format — a flaky-test
+risk, not a real correctness signal. What IS integration-tested: the
+policy-deny path (which never calls `fetch()` at all, so it's fully
+testable without network dependency), auth gating, and the fully
+self-contained contact-form intake route.

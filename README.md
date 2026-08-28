@@ -99,8 +99,14 @@ piece of the same production system:
       windows, invalid timezones, emergency-stop interaction). Wired
       into a real `GET /platforms/:id/policy-check` endpoint against
       live data.
-- [ ] **Round 4** — Connector framework, opportunity normalization,
-      duplicate detection.
+- [x] **Round 4** — Connector framework (`packages/connectors`): real
+      RemoteOK and We Work Remotely connectors (JSON + RSS, tested
+      against realistic fixtures), the own-website contact-form intake
+      path, pure duplicate detection (exact + fuzzy cross-platform),
+      and pipeline orchestration tying policy checks + normalization +
+      dedup together. Wired into `POST /connectors/:platformKey/run`
+      and the public `POST /intake/contact-form`. 50 new tests (164
+      total across the project).
 - [ ] **Round 5** — AI provider abstraction, relevance analysis.
 - [ ] **Round 6** — Conversation memory, conversation state management.
 - [ ] **Round 7** — Lead scoring, risk scoring.
