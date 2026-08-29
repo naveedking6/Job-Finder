@@ -35,13 +35,20 @@ export class MockAiProvider implements AiProvider {
   readonly key = "mock";
 
   async analyzeOpportunity(input: AnalyzeOpportunityInput): Promise<AnalyzeOpportunityOutput> {
-    const opportunityText =
-      `${input.opportunity.title} ${input.opportunity.description}`.toLowerCase();
+    const opportunityWords = new Set(
+      `${input.opportunity.title} ${input.opportunity.description}`
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, " ")
+        .split(/\s+/)
+        .filter(Boolean),
+    );
 
     const matchedServiceSlugs = input.services
       .filter((service) => {
         const serviceWords = service.name.toLowerCase().split(/\s+/);
-        return serviceWords.some((word) => word.length > 3 && opportunityText.includes(word));
+        // Whole-word matching, not substring — "designer" must not
+        // false-match a service word "design" the way .includes() would.
+        return serviceWords.some((word) => word.length > 3 && opportunityWords.has(word));
       })
       .map((s) => s.slug);
 

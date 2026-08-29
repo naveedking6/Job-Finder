@@ -36,6 +36,22 @@ describe("MockAiProvider.analyzeOpportunity", () => {
     expect(result.relevanceScore).toBeLessThan(50);
   });
 
+  it("does not false-match a substring inside an unrelated word (e.g. 'design' inside 'designer')", async () => {
+    const servicesWithDesign = [
+      { name: "Website Design", slug: "website-design" },
+      { name: "Shopify Development", slug: "shopify-development" },
+    ];
+    const input: AnalyzeOpportunityInput = {
+      opportunity: {
+        title: "Need a graphic designer for a logo",
+        description: "Nothing web-related, just a logo designer wanted.",
+      },
+      services: servicesWithDesign,
+    };
+    const result = await provider.analyzeOpportunity(input);
+    expect(result.matchedServiceSlugs).not.toContain("website-design");
+  });
+
   it("marks likelySerious true when a budget is specified", async () => {
     const input: AnalyzeOpportunityInput = {
       opportunity: {
