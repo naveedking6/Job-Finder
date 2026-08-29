@@ -179,8 +179,8 @@ describe("POST /opportunities/:id/analyze", () => {
       data: {
         sourcePlatformId: testPlatformId,
         externalId: `analysis-lowmatch-test-${Date.now()}`,
-        title: "Need a graphic designer for a logo",
-        description: "Simple logo design, nothing web-related.",
+        title: "Need someone to walk my dog every morning",
+        description: "Looking for a reliable pet sitter, completely unrelated to any technical work.",
         status: "DISCOVERED",
         automationPermission: "DISCOVERY_ONLY",
       },
