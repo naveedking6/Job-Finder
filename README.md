@@ -107,7 +107,17 @@ piece of the same production system:
       dedup together. Wired into `POST /connectors/:platformKey/run`
       and the public `POST /intake/contact-form`. 50 new tests (164
       total across the project).
-- [ ] **Round 5** — AI provider abstraction, relevance analysis.
+- [x] **Round 5** — AI provider abstraction (`packages/ai-core`): the
+      full 8-method interface from the brief, `analyzeOpportunity` fully
+      implemented against real Anthropic and OpenAI adapters (shared
+      prompt/response-parsing logic, tested against malformed/hallucinated
+      response fixtures), a deterministic mock provider CI actually runs
+      against, and a safe-by-default provider selector (`mock` unless
+      explicitly configured otherwise). Portfolio selection kept as a
+      plain non-AI filter rather than an unnecessary paid API call.
+      Wired into `POST /opportunities/:id/analyze`. 42 new ai-core tests
+      + API wiring (206 total across the project).
+- [ ] **Round 6** — Conversation memory, conversation state management.
 - [ ] **Round 6** — Conversation memory, conversation state management.
 - [ ] **Round 7** — Lead scoring, risk scoring.
 - [ ] **Round 8** — Human handoff, WhatsApp handoff.

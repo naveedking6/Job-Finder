@@ -1,4 +1,5 @@
 import { Prisma } from "@ai-sales-agent/database";
+import { AiResponseParseError } from "@ai-sales-agent/ai-core";
 import fp from "fastify-plugin";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { ZodError } from "zod";
@@ -32,6 +33,19 @@ async function errorHandlerPlugin(app: FastifyInstance): Promise<void> {
 
     if (error instanceof NotFoundError) {
       sendError(reply, 404, error.message, "NOT_FOUND");
+      return;
+    }
+
+    if (error instanceof AiResponseParseError) {
+      // 502: this process is acting as a gateway to an upstream AI
+      // provider, and that upstream gave a response we couldn't use.
+      // Not the caller's fault (400) and not our own bug (500) — the
+      // provider itself misbehaved.
+      app.log.error(
+        { rawResponse: error.rawResponse, issues: error.validationIssues },
+        "AI provider returned an unparseable response",
+      );
+      sendError(reply, 502, "The AI provider returned an unusable response", "AI_PROVIDER_ERROR");
       return;
     }
 

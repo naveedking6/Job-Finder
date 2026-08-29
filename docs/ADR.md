@@ -341,3 +341,72 @@ risk, not a real correctness signal. What IS integration-tested: the
 policy-deny path (which never calls `fetch()` at all, so it's fully
 testable without network dependency), auth gating, and the fully
 self-contained contact-form intake route.
+
+## 16. Round 5 — AI provider abstraction and the relevance engine
+
+Same pattern as Rounds 3 and 4: keep everything worth testing pure and
+database/network-free, keep the one part that genuinely costs real money
+and can't be tested without live credentials (the actual API call) as
+thin as possible.
+
+**Fully implemented this round:** `analyzeOpportunity` — the brief's "AI
+Relevance Engine". Both real adapters (Anthropic, OpenAI) share the exact
+same prompt-building and response-parsing logic
+(`capabilities/analyze-opportunity.ts`); the adapter classes themselves
+are just "call the SDK, hand the text to the shared parser". That shared
+logic is what's actually tested — 19 tests covering not just the happy
+path but the real reliability risks of LLM output: markdown code fences
+wrapping the JSON despite being told not to (a well-documented, common
+model behavior, not a hypothetical), a hallucinated service slug that
+was never actually offered (filtered out, not trusted), and various
+malformed-response shapes throwing a distinct `AiResponseParseError`
+rather than a generic crash.
+
+**Scaffolded, not yet implemented:** `generateResponse`,
+`extractRequirements`, `summarizeConversation` (Round 6),
+`scoreLead`, `analyzeRisk` (Round 7), `recommendSolution` (Round 6+ —
+the *initial* solution recommendation happens inside `analyzeOpportunity`
+itself, since generating relevance + a recommended approach in one call
+is both cheaper and more coherent than two separate calls; the standalone
+method exists for re-recommending later, once real requirements have
+been gathered). Real adapters throw a clear `NotImplementedYetError`
+naming which round covers each — never a silent no-op or a fake
+response pretending to be real analysis.
+
+**`selectPortfolio` is deliberately NOT part of the `AiProvider`
+interface at all.** Once `analyzeOpportunity` has already determined
+which services an opportunity matches, picking relevant portfolio items
+is a plain category filter — there's no reasoning task left for an LLM
+to do. Spending a paid API call on that would be cost for its own sake,
+not sophistication. It's a pure function (`selectRelevantPortfolioItems`)
+instead, and the real `POST /opportunities/:id/analyze` route calls it
+directly after getting the AI's service-slug matches back.
+
+**The mock provider is not decorative.** `MockAiProvider` implements all
+8 methods with simple deterministic (rule-based, keyword-overlap) logic
+— zero network calls, zero cost. This is what CI's integration suite
+actually exercises via `getConfiguredAiProvider()`'s safe default (see
+below), so the real database wiring — fetching an opportunity, calling
+whatever provider is configured, updating the row, matching portfolio
+items, logging to ActivityLog — is genuinely integration-tested end to
+end, just not against a live paid API. It also stands in reasonably well
+for the brief's "Local/Hosted OpenAI-compatible provider" option during
+development, with that distinction stated plainly rather than implied:
+it's a rule-based mock, not a real local model.
+
+**Safe-by-default provider selection.** `DEFAULT_AI_PROVIDER` defaults to
+`"mock"` if unset — a real Anthropic/OpenAI key being present in the
+environment is not, by itself, enough to trigger real (paid) API calls.
+Both `DEFAULT_AI_PROVIDER` and the matching key must be explicitly set.
+This mirrors the same "off by default, explicit opt-in" posture as the
+`AUTOMATION_ENABLED` emergency-stop flag from Round 2.
+
+**What Round 5 does NOT test, and why:** calling a real Anthropic or
+OpenAI API and getting back a genuine model response. Same reasoning as
+Round 4's connectors — that would mean either committing to spending real
+money on every CI run, or depending on a live third-party service's
+uptime for test reliability. What's tested instead is everything
+deterministic: prompt construction, response parsing against realistic
+(including deliberately malformed) fixture text, the hallucination
+guard, and the full database-integration path running against the mock
+provider.

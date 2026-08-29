@@ -12,6 +12,7 @@ import platformRoutes from "./routes/platforms.js";
 import policyRoutes from "./routes/policy.js";
 import connectorRoutes from "./routes/connectors.js";
 import intakeRoutes from "./routes/intake.js";
+import analysisRoutes from "./routes/analysis.js";
 import settingsRoutes from "./routes/settings.js";
 import automationRoutes from "./routes/automation.js";
 import analyticsRoutes from "./routes/analytics.js";
@@ -45,6 +46,7 @@ export function buildApp(): FastifyInstance {
   app.register(policyRoutes);
   app.register(connectorRoutes);
   app.register(intakeRoutes);
+  app.register(analysisRoutes);
   app.register(settingsRoutes);
   app.register(automationRoutes);
   app.register(analyticsRoutes);

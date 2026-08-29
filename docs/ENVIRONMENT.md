@@ -16,9 +16,11 @@ reason.
 | `LOG_LEVEL` | api | No (defaults to `info`) | Render env vars | Fastify/pino log level. `debug` for troubleshooting. |
 | `JWT_SECRET` | api (auth) | Yes | Render env vars (Secret) | Generate with e.g. `openssl rand -hex 32`. Rotate if ever exposed. |
 | `JWT_EXPIRES_IN` | api | No | — | Token lifetime, e.g. `7d`. |
-| `ANTHROPIC_API_KEY` | ai-core (Round 2+) | Only if using the Anthropic adapter | Render env vars (Secret) | Pay-per-use, no free tier — see ADR section 7. |
-| `OPENAI_API_KEY` | ai-core (Round 2+) | Only if using the OpenAI adapter | Render env vars (Secret) | Same cost note as above. |
-| `DEFAULT_AI_PROVIDER` | ai-core (Round 2+) | No | — | Which adapter key (`anthropic` / `openai`) to use when a lead has no provider override. |
+| `ANTHROPIC_API_KEY` | ai-core (via apps/api's lib/ai-provider.ts) | Only if `DEFAULT_AI_PROVIDER=anthropic` | Render env vars (Secret) | Pay-per-use, no free tier — see ADR section 7. |
+| `ANTHROPIC_MODEL` | ai-core | No | — | Overrides the default model (`claude-sonnet-4-5`) if set. |
+| `OPENAI_API_KEY` | ai-core | Only if `DEFAULT_AI_PROVIDER=openai` | Render env vars (Secret) | Same cost note as above. |
+| `OPENAI_MODEL` | ai-core | No | — | Overrides the default model (`gpt-4o`) if set. |
+| `DEFAULT_AI_PROVIDER` | apps/api's lib/ai-provider.ts | No (defaults to `mock`) | Render env vars | **Safe default is `mock`** — a deterministic, free, no-network provider. Real API calls only happen if this is explicitly set to `anthropic` or `openai` AND the matching API key is present. This is deliberate: the system should never start spending real money just because a key happened to be configured. |
 | `WHATSAPP_BUSINESS_NUMBER` | api (Round 2+, handoff) | Only for WhatsApp handoff links | Render env vars | Used to build `https://wa.me/<number>` links — see ADR / brief section on WhatsApp handoff. |
 | `AUTOMATION_ENABLED` | *(currently unused by app code)* | No | — | The global emergency-stop flag from the brief is implemented as a database-backed setting (`GET/PUT /settings`, `POST /automation/start`\|`stop`), seeded to `false` by `prisma/seed.ts` — **not** read from this env var. This entry is kept as a placeholder in `.env.example` in case a process-level override is added later; right now setting it has no effect. |
 | `SCHEDULER_SHARED_SECRET` | api + GitHub Actions (Round 2+) | Yes once scheduled workflows exist | Render env vars **and** GitHub Actions Secrets (must match in both places) | Lets the API verify that a request claiming to be the scheduled discovery/outreach trigger actually came from the GitHub Actions cron job, not an arbitrary caller. |
