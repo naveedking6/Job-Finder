@@ -117,8 +117,17 @@ piece of the same production system:
       plain non-AI filter rather than an unnecessary paid API call.
       Wired into `POST /opportunities/:id/analyze`. 42 new ai-core tests
       + API wiring (206 total across the project).
-- [ ] **Round 6** — Conversation memory, conversation state management.
-- [ ] **Round 6** — Conversation memory, conversation state management.
+- [x] **Round 6** — Conversation memory and state management: a pure,
+      forward-only conversation stage state machine
+      (`packages/shared/src/conversation/conversation-state.ts`) with
+      locked exit stages and drift protection; additive memory merging
+      that's the concrete mechanism behind "never repeatedly ask for
+      info already provided"; `generateResponse`, `extractRequirements`,
+      and `summarizeConversation` now genuinely implemented in both real
+      AI adapters. Wired into the real conversation loop at
+      `POST /conversations/:id/messages`. Caught and fixed a real schema
+      bug along the way (stage lives on Lead, not Conversation) before
+      it reached CI. 268 tests passing project-wide.
 - [ ] **Round 7** — Lead scoring, risk scoring.
 - [ ] **Round 8** — Human handoff, WhatsApp handoff.
 - [ ] **Round 9** — Dashboard, connected to the real backend (not a

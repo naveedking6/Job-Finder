@@ -410,3 +410,87 @@ deterministic: prompt construction, response parsing against realistic
 (including deliberately malformed) fixture text, the hallucination
 guard, and the full database-integration path running against the mock
 provider.
+
+## 17. Round 6 — conversation memory and conversation state management
+
+**A real design bug caught during this round, worth documenting
+explicitly rather than quietly fixing:** the `Conversation` model
+(schema.prisma) has no `stage` field — only a lifecycle `status`
+(ACTIVE/PAUSED/HUMAN_TAKEOVER/CLOSED). The `stage: ConversationStage`
+field the brief's `CONVERSATION_STAGES` progression actually refers to
+lives on `Lead`. The first draft of `POST /conversations/:id/messages`
+read and wrote `conversation.stage` throughout — which doesn't exist —
+caught by manually re-reading the actual schema before pushing, not by
+CI (this class of error is invisible to typecheck in this sandbox, since
+Prisma's stub types can't validate field names without the generated
+client — see section 11). The fix: state machine input/output now reads
+and writes `conversation.lead.stage`, and the route's test fixtures were
+corrected to set `stage` on `Lead.create()`, not the nonexistent field on
+`Conversation.create()`. This is exactly the kind of mistake the honest
+"only claim what's actually verified" posture in this ADR exists to
+catch — it's noted here instead of silently disappearing from the
+history.
+
+**The conversation stage state machine
+(`packages/shared/src/conversation/conversation-state.ts`) is pure and
+forward-only**, same design philosophy as the policy engine. A
+conversation only advances along `CONVERSATION_STAGES`' declared order;
+an event that would move it to an earlier stage than it's already
+reached is a no-op, not a regression — real conversations don't happen
+in a strict linear order (a client might mention budget before
+requirements are fully captured), and the state machine shouldn't
+un-advance progress because of that. Four stages (`HUMAN_HANDOFF`,
+`CONVERTED`, `LOST`, `ARCHIVED`) are locked exits: once entered, no
+ordinary event moves the conversation out of them automatically. A
+module-load-time check throws immediately if a new `ConversationStage`
+is ever added to `enums.ts` without updating this state machine to
+account for it — this can't silently drift out of sync.
+
+**Conversation memory merging
+(`packages/shared/src/conversation/conversation-memory.ts`) is the
+concrete mechanism behind the brief's "never repeatedly ask for
+information already provided."** Merging is additive: a turn that
+doesn't mention a client's name doesn't clear a name already captured in
+an earlier turn; array fields (features discussed, questions answered,
+shared portfolio items) accumulate and dedupe rather than overwrite; the
+free-form `requirements` object merges key-by-key, so a new turn adding
+one detail doesn't erase unrelated details from a previous turn. Tested
+with an explicit 4-turn simulated conversation asserting the full
+accumulated picture survives to the end.
+
+**`generateResponse`, `extractRequirements`, and
+`summarizeConversation`** are now genuinely implemented in both real
+adapters, following the exact same pattern as `analyzeOpportunity`
+(Round 5): pure prompt-building + response-parsing logic shared between
+Anthropic and OpenAI, tested against realistic (including deliberately
+malformed) fixture responses, with the actual paid API call kept as thin
+as possible. The duplicated JSON-extraction/parsing logic from Round 5
+was refactored into a shared `capabilities/parse-utils.ts` once a third
+capability needed the identical pattern — extracted after the
+duplication actually existed, not speculatively upfront.
+
+**`POST /conversations/:id/messages` is the real conversation-agent
+loop**: persists the incoming message, extracts new requirements from
+just that message (the merge logic is what accumulates history — see
+above), fires the appropriate state-machine events, generates an AI
+reply via the configured provider, and refreshes the conversation's
+rolling summary every turn. That per-turn summary refresh is a
+deliberate simplicity-over-optimization trade-off, stated plainly: it's
+an extra AI call on every single message, not the cheapest possible
+design (e.g. refreshing every N messages instead) — reasonable to
+revisit once real usage volume exists to actually observe the cost
+impact, not worth premature optimization against a system with zero
+real traffic yet.
+
+**A message from a human operator does not also trigger an AI reply.**
+Sending a `HUMAN`-sender message marks the conversation
+`HUMAN_TAKEOVER` and stops there — the system doesn't generate an
+automated response to its own operator's message, and (implicitly) a
+conversation in human-takeover mode is a natural place for future
+automation-guard logic (Round 8's human handoff) to check before the AI
+ever replies again.
+
+**Same honest testing boundary as Rounds 4 and 5**: the mock provider is
+what the integration suite exercises end-to-end (persisting messages,
+merging memory, advancing stage, updating the lead, refreshing the
+summary — all against real Postgres), not a live Anthropic/OpenAI call.

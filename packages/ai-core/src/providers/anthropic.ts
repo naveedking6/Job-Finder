@@ -3,6 +3,18 @@ import {
   buildAnalyzeOpportunityPrompt,
   parseAnalyzeOpportunityResponse,
 } from "../capabilities/analyze-opportunity.js";
+import {
+  buildGenerateResponsePrompt,
+  parseGenerateResponseResponse,
+} from "../capabilities/generate-response.js";
+import {
+  buildExtractRequirementsPrompt,
+  parseExtractRequirementsResponse,
+} from "../capabilities/extract-requirements.js";
+import {
+  buildSummarizeConversationPrompt,
+  parseSummarizeConversationResponse,
+} from "../capabilities/summarize-conversation.js";
 import { NotImplementedYetError, type AiProvider } from "../provider.js";
 import type {
   AnalyzeOpportunityInput,
@@ -45,8 +57,7 @@ export class AnthropicProvider implements AiProvider {
     this.model = config.model ?? "claude-sonnet-4-5";
   }
 
-  async analyzeOpportunity(input: AnalyzeOpportunityInput): Promise<AnalyzeOpportunityOutput> {
-    const prompt = buildAnalyzeOpportunityPrompt(input);
+  private async callWithPrompt(prompt: { system: string; user: string }): Promise<string> {
     const response = await this.client.messages.create({
       model: this.model,
       max_tokens: 1024,
@@ -58,24 +69,35 @@ export class AnthropicProvider implements AiProvider {
     if (!textBlock || textBlock.type !== "text") {
       throw new Error("Anthropic response contained no text content block");
     }
-
-    return parseAnalyzeOpportunityResponse(textBlock.text, input);
+    return textBlock.text;
   }
 
-  async generateResponse(_input: GenerateResponseInput): Promise<GenerateResponseOutput> {
-    throw new NotImplementedYetError("generateResponse", this.key, "Round 6");
+  async analyzeOpportunity(input: AnalyzeOpportunityInput): Promise<AnalyzeOpportunityOutput> {
+    const prompt = buildAnalyzeOpportunityPrompt(input);
+    const text = await this.callWithPrompt(prompt);
+    return parseAnalyzeOpportunityResponse(text, input);
+  }
+
+  async generateResponse(input: GenerateResponseInput): Promise<GenerateResponseOutput> {
+    const prompt = buildGenerateResponsePrompt(input);
+    const text = await this.callWithPrompt(prompt);
+    return parseGenerateResponseResponse(text);
   }
 
   async extractRequirements(
-    _input: ExtractRequirementsInput,
+    input: ExtractRequirementsInput,
   ): Promise<ExtractRequirementsOutput> {
-    throw new NotImplementedYetError("extractRequirements", this.key, "Round 6");
+    const prompt = buildExtractRequirementsPrompt(input);
+    const text = await this.callWithPrompt(prompt);
+    return parseExtractRequirementsResponse(text);
   }
 
   async summarizeConversation(
-    _input: SummarizeConversationInput,
+    input: SummarizeConversationInput,
   ): Promise<SummarizeConversationOutput> {
-    throw new NotImplementedYetError("summarizeConversation", this.key, "Round 6");
+    const prompt = buildSummarizeConversationPrompt(input);
+    const text = await this.callWithPrompt(prompt);
+    return parseSummarizeConversationResponse(text);
   }
 
   async scoreLead(_input: ScoreLeadInput): Promise<ScoreLeadOutput> {

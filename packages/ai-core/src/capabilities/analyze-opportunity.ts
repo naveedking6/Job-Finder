@@ -3,7 +3,7 @@ import {
   type AnalyzeOpportunityInput,
   type AnalyzeOpportunityOutput,
 } from "../schemas.js";
-import { AiResponseParseError } from "../provider.js";
+import { parseJsonResponse } from "./parse-utils.js";
 
 export interface BuiltPrompt {
   system: string;
@@ -62,48 +62,26 @@ ${skillsLine}`;
  * not theoretical: it's a well-documented behavior across every major
  * chat-tuned model when the response includes structured data.
  */
-function extractJsonText(rawResponse: string): string {
-  const trimmed = rawResponse.trim();
-  const fencedMatch = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/);
-  return fencedMatch ? fencedMatch[1]!.trim() : trimmed;
-}
-
 /**
  * Parses and validates a raw model response into AnalyzeOpportunityOutput.
  * Two layers of validation:
- *   1. Zod schema shape (types, ranges, required fields).
+ *   1. Zod schema shape (types, ranges, required fields) via the shared
+ *      parseJsonResponse pipeline.
  *   2. A business rule Zod alone can't express: matchedServiceSlugs must
  *      only contain slugs that were actually offered in the input — a
  *      hallucinated slug is silently filtered out (not a fatal error;
  *      the rest of the analysis is still usable) rather than trusted.
- *
- * Throws AiResponseParseError (not a generic Error) on anything that
- * doesn't parse as valid JSON or doesn't match the schema, so callers
- * can distinguish "the model gave a bad response" from "something else
- * broke" and decide whether a retry is worthwhile.
  */
 export function parseAnalyzeOpportunityResponse(
   rawResponse: string,
   input: AnalyzeOpportunityInput,
 ): AnalyzeOpportunityOutput {
-  const jsonText = extractJsonText(rawResponse);
-
-  let parsedJson: unknown;
-  try {
-    parsedJson = JSON.parse(jsonText);
-  } catch {
-    throw new AiResponseParseError(rawResponse, "Response is not valid JSON");
-  }
-
-  const validation = analyzeOpportunityOutputSchema.safeParse(parsedJson);
-  if (!validation.success) {
-    throw new AiResponseParseError(rawResponse, validation.error.message);
-  }
+  const parsed = parseJsonResponse(rawResponse, analyzeOpportunityOutputSchema);
 
   const validServiceSlugs = new Set(input.services.map((s) => s.slug));
-  const filteredSlugs = validation.data.matchedServiceSlugs.filter((slug) =>
+  const filteredSlugs = parsed.matchedServiceSlugs.filter((slug) =>
     validServiceSlugs.has(slug),
   );
 
-  return { ...validation.data, matchedServiceSlugs: filteredSlugs };
+  return { ...parsed, matchedServiceSlugs: filteredSlugs };
 }

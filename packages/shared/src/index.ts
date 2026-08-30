@@ -4,3 +4,5 @@ export * from "./settings.js";
 export * from "./api.js";
 export * from "./schemas/opportunity.js";
 export * from "./schemas/requests.js";
+export * from "./conversation/conversation-state.js";
+export * from "./conversation/conversation-memory.js";
