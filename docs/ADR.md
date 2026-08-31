@@ -494,3 +494,32 @@ ever replies again.
 what the integration suite exercises end-to-end (persisting messages,
 merging memory, advancing stage, updating the lead, refreshing the
 summary — all against real Postgres), not a live Anthropic/OpenAI call.
+
+**Addendum, same round:** the `conversation.stage` bug described above
+was actually only partially fixed on the first pass — two more
+references survived in the integration test file itself (a redundant
+assertion checking `.stage` on a fetched `Conversation` row, and a
+`before?.stage` capture used for the "never regresses" test), which CI
+caught and this sandbox's local typecheck couldn't (same root cause:
+Prisma's stub types can't validate field names without a generated
+client). Fixed by checking `Lead.stage` instead, and by removing the
+redundant conversation-level check entirely (the lead-level assertion
+right after it already covers the same thing).
+
+**Also caught this round, by CI's real Postgres-backed integration
+tests specifically:** `MockAiProvider.extractRequirements`'s original
+implementation always returned a non-empty result (echoing the raw
+message text back under a `rawText` key), which meant every single
+client message — including pure filler like "Just checking in." —
+looked like it contained a genuinely new requirement. That falsely
+advanced the conversation stage every turn and made the memory-merge
+integration test's "nothing changed" assertion fail, because something
+genuinely had changed (the echoed raw text differs message to message).
+Fixed by giving the mock a slightly more realistic extraction heuristic
+(regex-based detection of project-type/budget/timeline mentions,
+returning empty when nothing matches) — this is exactly the kind of bug
+that only a real database-integration test, not a unit test against the
+mock in isolation, would surface: the mock's own unit tests were
+individually fine, but its behavior was unrealistic in a way that only
+showed up once real state (conversation stage, accumulated memory) was
+actually threaded through multiple turns.

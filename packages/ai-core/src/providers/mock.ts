@@ -81,8 +81,30 @@ export class MockAiProvider implements AiProvider {
   async extractRequirements(
     input: ExtractRequirementsInput,
   ): Promise<ExtractRequirementsOutput> {
+    // A deliberately simple but non-trivial heuristic — unlike a naive
+    // "always echo something back" stub, this only reports a
+    // requirement/budget/timeline when the message actually contains
+    // recognizable signal for one, so filler messages like "just
+    // checking in" correctly produce nothing new. This matters for
+    // realistic testing of the conversation state machine and memory
+    // merge logic downstream — see docs/ADR.md Round 6 section.
+    const text = input.conversationText.toLowerCase();
+    const requirements: Record<string, unknown> = {};
+
+    if (/\bwebsite|store|shop|app\b/.test(text)) {
+      requirements.projectType = "website";
+    }
+    if (/\bpage/.test(text)) {
+      requirements.mentionsPages = true;
+    }
+
+    const budgetMatch = text.match(/\$\s?\d[\d,]*/);
+    const timelineMatch = text.match(/\b(\d+\s*(day|week|month)s?|asap)\b/);
+
     return {
-      requirements: { rawText: input.conversationText.slice(0, 200) },
+      requirements,
+      budget: budgetMatch ? budgetMatch[0] : undefined,
+      timeline: timelineMatch ? timelineMatch[0] : undefined,
     };
   }
 

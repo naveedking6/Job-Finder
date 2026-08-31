@@ -102,6 +102,34 @@ describe("MockAiProvider — other methods are usable, not throwing NotImplement
     expect(result.response.length).toBeGreaterThan(0);
   });
 
+  it("extractRequirements returns empty requirements for filler text with no real signal", async () => {
+    const result = await provider.extractRequirements({ conversationText: "Just checking in." });
+    expect(result.requirements).toEqual({});
+    expect(result.budget).toBeUndefined();
+    expect(result.timeline).toBeUndefined();
+  });
+
+  it("extractRequirements detects a project-type mention", async () => {
+    const result = await provider.extractRequirements({
+      conversationText: "I need a website for my business.",
+    });
+    expect(result.requirements).toMatchObject({ projectType: "website" });
+  });
+
+  it("extractRequirements detects a budget figure", async () => {
+    const result = await provider.extractRequirements({
+      conversationText: "My budget is around $1500 for this.",
+    });
+    expect(result.budget).toBe("$1500");
+  });
+
+  it("extractRequirements detects a timeline mention", async () => {
+    const result = await provider.extractRequirements({
+      conversationText: "I need this done in 3 weeks.",
+    });
+    expect(result.timeline).toBe("3 weeks");
+  });
+
   it("scoreLead returns a score in range", async () => {
     const result = await provider.scoreLead({ conversationSummary: "test" });
     expect(result.score).toBeGreaterThanOrEqual(0);
