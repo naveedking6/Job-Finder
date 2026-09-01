@@ -523,3 +523,58 @@ mock in isolation, would surface: the mock's own unit tests were
 individually fine, but its behavior was unrealistic in a way that only
 showed up once real state (conversation stage, accumulated memory) was
 actually threaded through multiple turns.
+
+## 18. Round 7 — lead scoring and risk scoring
+
+**Deliberately a hybrid, not a pure AI judgment call.** Same reasoning
+as every prior round: `packages/shared/src/scoring-signals/` computes
+fast, free, deterministic facts from structured conversation data —
+does the conversation have a discussed budget, detailed requirements,
+multiple client responses, does the client's language match known
+scam-adjacent or payment-avoidance patterns, is there a budget/scope
+mismatch. These map directly onto the brief's own listed positive lead
+signals and negative risk signals. The AI's `scoreLead`/`analyzeRisk`
+calls (now genuinely implemented in both real adapters) receive these
+signals as grounding context rather than reasoning about lead quality
+from raw conversation text with nothing to anchor to — the model's job
+is the nuanced judgment a checklist can't capture (tone, specificity,
+genuine intent), not re-deriving facts a rule already established for
+free.
+
+**Risk scoring stays deliberately conservative and clearly framed.** The
+brief is explicit that this isn't an accusation of fraud, just a caution
+level — that framing is baked directly into the system prompt
+(`capabilities/analyze-risk.ts`), and the risk-signal pattern list
+(`risk-signals.ts`) sticks to well-known, low-ambiguity phrases rather
+than a broad list that would drift into false-positiving legitimate
+international clients (a test explicitly guards against this: a client
+who runs a cryptocurrency business is not itself a risk signal — only
+the specific "crypto only" *payment demand* phrase is). Urgency language
+alone is weighted low and explicitly can't push a lead into the
+high-risk band by itself, since plenty of legitimate clients are
+genuinely in a hurry.
+
+**A real regex bug caught by its own test, immediately**: the initial
+scam-language pattern's trailing word-boundary (`\b`) silently failed to
+match "lottery winning" because the pattern only spelled "winn" — the
+boundary check landed between two word characters ("n" and "i"), which
+`\b` can never satisfy. Caught the moment the test ran, before this ever
+reached CI — exactly the value of writing the test alongside the logic
+rather than after.
+
+**The scoring endpoint is the concrete tie-in between this round and
+Round 6's state machine**: crossing the configured
+`LEAD_SCORE_HANDOFF_THRESHOLD` fires a real `HOT_LEAD_THRESHOLD` event
+through `advanceStage`, not just a stored number nobody acts on. Risk
+crossing `RISK_SCORE_REVIEW_THRESHOLD` sets a `flaggedForReview` flag in
+the response — full human-handoff mechanics (notifications, dashboard
+surfacing) are Round 8, but the scoring layer already produces the
+signal that round will act on.
+
+Same honest testing boundary as every prior round: real Anthropic/OpenAI
+calls aren't exercised in CI; the mock provider (now scoring
+proportionally from whatever signals it's handed, rather than a flat
+stub) is what the integration suite runs against, genuinely exercising
+the full path — rule-based signal detection, database fetch, AI call,
+database update, history-row creation, and state-machine advancement —
+against real Postgres.

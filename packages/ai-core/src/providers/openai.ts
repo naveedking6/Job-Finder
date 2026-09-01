@@ -15,6 +15,8 @@ import {
   buildSummarizeConversationPrompt,
   parseSummarizeConversationResponse,
 } from "../capabilities/summarize-conversation.js";
+import { buildScoreLeadPrompt, parseScoreLeadResponse } from "../capabilities/score-lead.js";
+import { buildAnalyzeRiskPrompt, parseAnalyzeRiskResponse } from "../capabilities/analyze-risk.js";
 import { NotImplementedYetError, type AiProvider } from "../provider.js";
 import type {
   AnalyzeOpportunityInput,
@@ -97,12 +99,16 @@ export class OpenAiProvider implements AiProvider {
     return parseSummarizeConversationResponse(text);
   }
 
-  async scoreLead(_input: ScoreLeadInput): Promise<ScoreLeadOutput> {
-    throw new NotImplementedYetError("scoreLead", this.key, "Round 7");
+  async scoreLead(input: ScoreLeadInput): Promise<ScoreLeadOutput> {
+    const prompt = buildScoreLeadPrompt(input);
+    const text = await this.callWithPrompt(prompt);
+    return parseScoreLeadResponse(text);
   }
 
-  async analyzeRisk(_input: AnalyzeRiskInput): Promise<AnalyzeRiskOutput> {
-    throw new NotImplementedYetError("analyzeRisk", this.key, "Round 7");
+  async analyzeRisk(input: AnalyzeRiskInput): Promise<AnalyzeRiskOutput> {
+    const prompt = buildAnalyzeRiskPrompt(input);
+    const text = await this.callWithPrompt(prompt);
+    return parseAnalyzeRiskResponse(text);
   }
 
   async recommendSolution(_input: RecommendSolutionInput): Promise<RecommendSolutionOutput> {

@@ -116,12 +116,38 @@ export class MockAiProvider implements AiProvider {
     };
   }
 
-  async scoreLead(_input: ScoreLeadInput): Promise<ScoreLeadOutput> {
-    return { score: 50, reasoning: "Mock provider default score." };
+  async scoreLead(input: ScoreLeadInput): Promise<ScoreLeadOutput> {
+    // Deterministic: count how many provided signals are truthy, scale
+    // to 0-100. Mirrors the shape of the real rule-based scoring in
+    // packages/shared/src/scoring-signals/ without depending on that
+    // package directly — ai-core only sees whatever signals object the
+    // caller already computed and passed in.
+    const signalEntries = Object.values(input.signals ?? {});
+    const truthyCount = signalEntries.filter(Boolean).length;
+    const score =
+      signalEntries.length > 0
+        ? Math.round((truthyCount / signalEntries.length) * 100)
+        : 30; // no signals at all — a mildly cold default, not zero
+
+    return {
+      score,
+      reasoning: `Mock provider: ${truthyCount}/${signalEntries.length || 0} positive signals detected.`,
+    };
   }
 
-  async analyzeRisk(_input: AnalyzeRiskInput): Promise<AnalyzeRiskOutput> {
-    return { score: 20, signals: [], reasoning: "Mock provider default risk assessment." };
+  async analyzeRisk(input: AnalyzeRiskInput): Promise<AnalyzeRiskOutput> {
+    const signalEntries = Object.entries(input.clientMetadata ?? {});
+    const firedSignals = signalEntries.filter(([, value]) => Boolean(value)).map(([key]) => key);
+    const score = Math.min(100, firedSignals.length * 25);
+
+    return {
+      score,
+      signals: firedSignals,
+      reasoning:
+        firedSignals.length > 0
+          ? `Mock provider: risk signals fired: ${firedSignals.join(", ")}.`
+          : "Mock provider: no risk signals detected.",
+    };
   }
 
   async recommendSolution(input: RecommendSolutionInput): Promise<RecommendSolutionOutput> {

@@ -136,10 +136,45 @@ describe("MockAiProvider — other methods are usable, not throwing NotImplement
     expect(result.score).toBeLessThanOrEqual(100);
   });
 
+  it("scoreLead scales with the proportion of truthy signals provided", async () => {
+    const allTrue = await provider.scoreLead({
+      conversationSummary: "test",
+      signals: { a: true, b: true },
+    });
+    const halfTrue = await provider.scoreLead({
+      conversationSummary: "test",
+      signals: { a: true, b: false },
+    });
+    const allFalse = await provider.scoreLead({
+      conversationSummary: "test",
+      signals: { a: false, b: false },
+    });
+    expect(allTrue.score).toBe(100);
+    expect(halfTrue.score).toBe(50);
+    expect(allFalse.score).toBe(0);
+  });
+
   it("analyzeRisk returns a score in range", async () => {
     const result = await provider.analyzeRisk({ conversationSummary: "test" });
     expect(result.score).toBeGreaterThanOrEqual(0);
     expect(result.score).toBeLessThanOrEqual(100);
+  });
+
+  it("analyzeRisk lists exactly the fired signal names", async () => {
+    const result = await provider.analyzeRisk({
+      conversationSummary: "test",
+      clientMetadata: { scamLanguageDetected: true, urgencyPressureLanguage: false },
+    });
+    expect(result.signals).toEqual(["scamLanguageDetected"]);
+  });
+
+  it("analyzeRisk returns zero signals and low score for a clean conversation", async () => {
+    const result = await provider.analyzeRisk({
+      conversationSummary: "test",
+      clientMetadata: { scamLanguageDetected: false },
+    });
+    expect(result.signals).toEqual([]);
+    expect(result.score).toBe(0);
   });
 
   it("recommendSolution handles an empty service list without throwing", async () => {

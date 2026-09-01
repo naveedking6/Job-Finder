@@ -7,6 +7,8 @@ export * from "./capabilities/analyze-opportunity.js";
 export * from "./capabilities/generate-response.js";
 export * from "./capabilities/extract-requirements.js";
 export * from "./capabilities/summarize-conversation.js";
+export * from "./capabilities/score-lead.js";
+export * from "./capabilities/analyze-risk.js";
 export * from "./providers/anthropic.js";
 export * from "./providers/openai.js";
 export * from "./providers/mock.js";

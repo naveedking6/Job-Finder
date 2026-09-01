@@ -6,3 +6,5 @@ export * from "./schemas/opportunity.js";
 export * from "./schemas/requests.js";
 export * from "./conversation/conversation-state.js";
 export * from "./conversation/conversation-memory.js";
+export * from "./scoring-signals/lead-signals.js";
+export * from "./scoring-signals/risk-signals.js";

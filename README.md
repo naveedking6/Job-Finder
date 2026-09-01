@@ -128,7 +128,16 @@ piece of the same production system:
       `POST /conversations/:id/messages`. Caught and fixed a real schema
       bug along the way (stage lives on Lead, not Conversation) before
       it reached CI. 268 tests passing project-wide.
-- [ ] **Round 7** — Lead scoring, risk scoring.
+- [x] **Round 7** — Lead scoring and risk scoring: deterministic,
+      free rule-based signal detection (`packages/shared/src/scoring-signals/`)
+      matching the brief's own listed positive/negative signals, grounding
+      real `scoreLead`/`analyzeRisk` AI calls (now implemented in both
+      adapters) rather than asking the model to reason with no anchor.
+      Risk scoring stays conservative and explicitly framed as "worth a
+      look", not an accusation. Wired into `POST /leads/:id/score`,
+      which ties directly into Round 6's state machine — crossing the
+      configured hot-lead threshold fires a real stage transition. 323
+      tests passing project-wide.
 - [ ] **Round 8** — Human handoff, WhatsApp handoff.
 - [ ] **Round 9** — Dashboard, connected to the real backend (not a
       mockup).
