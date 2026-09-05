@@ -204,7 +204,7 @@ describe("POST /leads/:id/score", () => {
     expect(body.flaggedForReview).toBe(true);
   });
 
-  it("advances the lead stage to HOT_LEAD when the score crosses the configured threshold", async () => {
+  it("advances the lead stage to HUMAN_HANDOFF when the lead score crosses the configured handoff threshold", async () => {
     const { lead } = await createLeadWithConversation({
       memory: {
         business: "Acme Co",
@@ -227,12 +227,14 @@ describe("POST /leads/:id/score", () => {
     });
 
     const body = response.json().data;
-    // With every positive lead signal firing, the mock provider's
-    // proportional scoring should reach 100 — well above the default
-    // 71-point handoff threshold — advancing the stage.
-    if (body.leadScore.score >= 71) {
-      expect(body.stage).toBe("HOT_LEAD");
-    }
+    // With every positive lead signal firing (including explicit
+    // direct-contact and ready-to-start requests, both handoff triggers
+    // on their own), this escalates straight to HUMAN_HANDOFF — see
+    // Round 8, which supersedes Round 7's HOT_LEAD-stage-only behavior.
+    // Unconditional (not score-dependent): the direct-contact and
+    // ready-to-start signals alone trigger handoff regardless of score.
+    expect(body.stage).toBe("HUMAN_HANDOFF");
+    expect(body.handoff).not.toBeNull();
   });
 
   it("logs an ActivityLog entry recording the scoring action", async () => {

@@ -138,7 +138,21 @@ piece of the same production system:
       which ties directly into Round 6's state machine — crossing the
       configured hot-lead threshold fires a real stage transition. 323
       tests passing project-wide.
-- [ ] **Round 8** — Human handoff, WhatsApp handoff.
+- [x] **Round 8** — Human handoff and WhatsApp handoff: automatic
+      handoff triggering (`packages/shared/src/handoff/`) covering four
+      of the brief's six listed triggers (two — pricing/technical
+      decisions exceeding AI authority — explicitly deferred, not
+      faked, pending PricingRule integration). A structured handoff
+      package covering every field the brief lists, with risk warnings
+      always prioritized in the recommended next action even for an
+      otherwise-hot lead. WhatsApp link generation that never fires from
+      an unconfigured placeholder number. "No notifications for every
+      lead" enforced structurally via the state machine's locked exit
+      stages, not just by convention — tested explicitly (one
+      notification on first handoff, zero more on repeat scoring).
+      Wired into `GET /leads/:id/handoff-package` and automatic
+      triggering inside `POST /leads/:id/score`. 350 tests passing
+      project-wide.
 - [ ] **Round 9** — Dashboard, connected to the real backend (not a
       mockup).
 - [ ] **Round 10** — Logging, expanded test coverage, deployment

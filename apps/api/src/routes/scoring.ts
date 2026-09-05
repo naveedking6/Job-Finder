@@ -4,6 +4,8 @@ import {
   computeRuleBasedRiskScore,
   detectLeadSignals,
   detectRiskSignals,
+  isLockedStage,
+  shouldTriggerHandoff,
   DEFAULT_SETTINGS,
   type ConversationEvent,
   type ConversationMemoryData,
@@ -12,6 +14,7 @@ import type { FastifyInstance } from "fastify";
 import { NotFoundError } from "../plugins/error-handler.js";
 import { getConfiguredAiProvider } from "../lib/ai-provider.js";
 import { toJsonSafe } from "../lib/json-safe.js";
+import { assembleHandoff } from "../lib/handoff.js";
 import type { Message } from "@ai-sales-agent/database";
 
 export default async function scoringRoutes(app: FastifyInstance): Promise<void> {
@@ -94,20 +97,53 @@ export default async function scoringRoutes(app: FastifyInstance): Promise<void>
         (reviewThresholdSetting?.value as number | undefined) ??
         DEFAULT_SETTINGS.RISK_SCORE_REVIEW_THRESHOLD;
 
-      // A hot lead score crossing the threshold is a real state-machine
-      // event, not just a stored number — this is the concrete tie-in
-      // between scoring (this round) and the conversation stage
-      // progression (Round 6).
+      // A hot lead score / risk threshold / explicit client signal is a
+      // real state-machine event, not just a stored number — this is
+      // the concrete tie-in between scoring (Round 7) and handoff
+      // (this round). Superseding Round 7's HOT_LEAD-stage-only
+      // behavior: reaching the same threshold now escalates all the way
+      // to a human handoff, which is what the brief actually asks for.
+      const handoffTrigger = shouldTriggerHandoff({
+        leadScore: finalLeadScore,
+        riskScore: finalRiskScore,
+        leadScoreThreshold: handoffThreshold,
+        riskScoreThreshold: reviewThreshold,
+        requestsDirectContact: leadSignals.requestsDirectContact,
+        mentionsReadyToStart: leadSignals.mentionsReadyToStart,
+      });
+
+      // Never re-trigger a handoff (or send another notification) for a
+      // lead that's already locked into HUMAN_HANDOFF or another exit
+      // stage — the brief is explicit: "I do not want notifications for
+      // every lead." One notification per lead reaching handoff, not
+      // one per scoring run.
+      const alreadyLocked = isLockedStage(lead.stage);
+      const isNewHandoff = handoffTrigger.shouldHandoff && !alreadyLocked;
+
       const events: ConversationEvent[] = [];
-      if (finalLeadScore >= handoffThreshold) events.push("HOT_LEAD_THRESHOLD");
+      if (isNewHandoff) events.push("HANDOFF_TRIGGERED");
       const newStage = events.reduce((stage, event) => advanceStage(stage, event), lead.stage);
 
       const flaggedForReview = finalRiskScore >= reviewThreshold;
 
+      // Assembled BEFORE the transaction (read-only queries of its own)
+      // so the notification can include the recommended next action and
+      // WhatsApp link, not just a bare "handoff happened" message.
+      const handoff = isNewHandoff
+        ? await assembleHandoff(app, lead.id, handoffTrigger.reasons)
+        : null;
+
       const [updatedLead] = await app.prisma.$transaction([
         app.prisma.lead.update({
           where: { id: lead.id },
-          data: { leadScore: finalLeadScore, riskScore: finalRiskScore, stage: newStage },
+          data: {
+            leadScore: finalLeadScore,
+            riskScore: finalRiskScore,
+            stage: newStage,
+            ...(isNewHandoff
+              ? { handoffAt: new Date(), handoffReason: handoffTrigger.reasons.join(" ") }
+              : {}),
+          },
         }),
         app.prisma.leadScore.create({
           data: {
@@ -135,10 +171,24 @@ export default async function scoringRoutes(app: FastifyInstance): Promise<void>
               leadScore: finalLeadScore,
               riskScore: finalRiskScore,
               flaggedForReview,
-              stageAdvanced: newStage !== lead.stage,
+              handoffTriggered: isNewHandoff,
+              handoffReasons: handoffTrigger.reasons,
             }),
           },
         }),
+        ...(isNewHandoff
+          ? [
+              app.prisma.notification.create({
+                data: {
+                  type: "LEAD_HANDOFF",
+                  title: "Lead ready for human handoff",
+                  body: `${handoffTrigger.reasons.join(" ")} Recommended action: ${handoff!.handoffPackage.recommendedNextAction}`,
+                  relatedEntityType: "Lead",
+                  relatedEntityId: lead.id,
+                },
+              }),
+            ]
+          : []),
       ]);
 
       return {
@@ -149,6 +199,7 @@ export default async function scoringRoutes(app: FastifyInstance): Promise<void>
           riskScore: { score: finalRiskScore, signals: riskResult.signals, reasoning: riskResult.reasoning, ruleBasedScore: ruleBasedRiskScore },
           flaggedForReview,
           stage: newStage,
+          handoff: isNewHandoff ? handoff : null,
         },
       };
     },

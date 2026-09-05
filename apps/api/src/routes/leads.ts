@@ -2,6 +2,7 @@ import { buildPaginatedData, leadHandoffSchema, paginationQuerySchema } from "@a
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { NotFoundError } from "../plugins/error-handler.js";
+import { assembleHandoff } from "../lib/handoff.js";
 
 const listQuerySchema = paginationQuerySchema.extend({
   stage: z.string().optional(),
@@ -93,6 +94,19 @@ export default async function leadRoutes(app: FastifyInstance): Promise<void> {
       ]);
 
       return { success: true, data: updatedLead };
+    },
+  );
+
+  app.get<{ Params: { id: string } }>(
+    "/leads/:id/handoff-package",
+    { preHandler: [app.authenticate] },
+    async (request) => {
+      // A human pulling up the package directly (e.g. reviewing a lead
+      // before deciding whether to hand it off manually) has no
+      // automatic trigger reasons to report — pass an empty list rather
+      // than fabricating one.
+      const result = await assembleHandoff(app, request.params.id, []);
+      return { success: true, data: result };
     },
   );
 }

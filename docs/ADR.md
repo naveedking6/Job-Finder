@@ -578,3 +578,63 @@ stub) is what the integration suite runs against, genuinely exercising
 the full path — rule-based signal detection, database fetch, AI call,
 database update, history-row creation, and state-machine advancement —
 against real Postgres.
+
+## 19. Round 8 — human handoff and WhatsApp handoff
+
+**Four of the brief's six handoff triggers are implemented; two are
+explicitly deferred, not faked.** `packages/shared/src/handoff/handoff-trigger.ts`
+covers: lead score crossing the configured threshold, risk score
+crossing the review threshold, the client explicitly requesting direct
+contact, and the client expressing readiness to start — all four are
+concretely groundable from signals Rounds 6-7 already compute. "A
+pricing decision requires my approval" and "a technical decision exceeds
+the AI's authority" are NOT implemented — they'd need the AI to actively
+reason about specific requests against `PricingRule` data, and that
+table exists in the schema but isn't wired into any live route yet.
+Stated here plainly as a real gap and a reasonable future extension,
+rather than papered over with a vague catch-all trigger that would claim
+coverage it doesn't have.
+
+**This round supersedes part of Round 7's behavior, on purpose.** Round
+7 had a lead crossing the score threshold advance only to the `HOT_LEAD`
+stage. Round 8 replaces that: crossing the same threshold now fires a
+real `HANDOFF_TRIGGERED` event, escalating straight to `HUMAN_HANDOFF`
+— which is what the brief actually asks for ("At that point, create a
+human handoff"), not just a label change. The Round 7 integration test
+that asserted the old `HOT_LEAD` behavior was updated to assert the new
+`HUMAN_HANDOFF` behavior, with the reasoning for the change stated in
+the test itself, not silently altered.
+
+**"I do not want notifications for every lead" is enforced structurally,
+not just by convention.** `shouldTriggerHandoff`'s result is only acted
+on (state transition, `Notification` row, `handoffAt`/`handoffReason`
+set) when the lead isn't already in a locked stage
+(`isLockedStage` from Round 6's state machine). Scoring the same lead
+again after it's already been handed off produces zero new
+notifications — tested explicitly: score once (one notification), score
+again with no new signal (still exactly one notification, not two).
+
+**The WhatsApp link is never generated from an unconfigured placeholder.**
+The seeded default `WHATSAPP_BUSINESS_NUMBER` (`+10000000000`) is a
+placeholder, not a real contact — `assembleHandoff` explicitly checks
+for it and returns `null` for `whatsAppLink` rather than producing a
+misleading link to a fake number. A real link only appears once the
+operator has actually configured a genuine number via `PUT /settings`.
+
+**The handoff package covers every field the brief lists**: Client
+Name, Platform, Country, Project Summary, Requirements, Budget,
+Timeline, Lead Score, Risk Score, Conversation Summary, Recommended
+Next Action, and Contact Details when legitimately available (pulled
+from a linked `Client` row if one exists, falling back to
+`authorMetadata` captured at intake time — e.g. the email a contact-form
+submitter provided in Round 4 — never fabricated). The recommended next
+action logic prioritizes a risk warning above everything else, even for
+an otherwise-hot lead — the brief's caution that high-risk leads should
+"never automatically receive sensitive information" needs to be the
+first thing a human reviewing the package sees, not buried under a
+generic "follow up promptly" line.
+
+Same honest testing boundary as every prior round: MockAiProvider is
+what CI's integration suite runs against. 350 tests passing locally
+project-wide before this round's integration suite even runs (which
+only executes in CI, against real Postgres).

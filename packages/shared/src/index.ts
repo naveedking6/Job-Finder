@@ -8,3 +8,6 @@ export * from "./conversation/conversation-state.js";
 export * from "./conversation/conversation-memory.js";
 export * from "./scoring-signals/lead-signals.js";
 export * from "./scoring-signals/risk-signals.js";
+export * from "./handoff/handoff-trigger.js";
+export * from "./handoff/whatsapp.js";
+export * from "./handoff/handoff-package.js";
